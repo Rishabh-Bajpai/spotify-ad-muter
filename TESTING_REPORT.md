@@ -1,6 +1,6 @@
 # Testing Report
 
-- Project: `spotify-ad-blocker` / `spotify-ad-muter`
+- Project: `spotify-ad-muter`
 - Environment used: project virtualenv at `.venv`
 - Test command executed: `.venv/bin/python -m unittest discover -s tests`
 - Final result: `21` tests passed, `0` failures, `0` errors
