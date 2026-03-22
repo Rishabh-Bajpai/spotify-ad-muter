@@ -4,7 +4,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/home/rishabh/github_projects/spotify-ad-blocker/.venv/bin/spotify-ad-muter --config %h/.config/spotify-ad-muter/config.toml
+ExecStart=@PROJECT_ROOT@/.venv/bin/spotify-ad-muter --config %h/.config/spotify-ad-muter/config.toml
 Restart=on-failure
 RestartSec=2
 

@@ -7,11 +7,31 @@ name = "spotify-ad-muter"
 version = "0.1.0"
 description = "Mute Spotify ads from a standalone Python service"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.11"
+keywords = ["spotify", "linux", "mpris", "pipewire", "pulseaudio"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = [
   "dbus-next>=0.2.3",
   "pulsectl>=24.12.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Rishabh-Bajpai/spotify-ad-muter"
+Repository = "https://github.com/Rishabh-Bajpai/spotify-ad-muter"
+Issues = "https://github.com/Rishabh-Bajpai/spotify-ad-muter/issues"
+Changelog = "https://github.com/Rishabh-Bajpai/spotify-ad-muter/blob/main/CHANGELOG.md"
 
 [project.scripts]
 spotify-ad-muter = "spotify_ad_muter.cli:main"

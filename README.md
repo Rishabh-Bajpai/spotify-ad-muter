@@ -44,6 +44,30 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
+## One-click install
+
+For local installation with automatic virtualenv creation, config setup, systemd user service install, and auto-start on login:
+
+```bash
+chmod +x scripts/install.sh
+./scripts/install.sh
+```
+
+This will:
+
+- create `.venv`
+- install the app into the virtualenv
+- create `~/.config/spotify-ad-muter/config.toml` if missing
+- install `~/.config/systemd/user/spotify-ad-muter.service`
+- enable and start the user service
+
+To remove only the installed user service:
+
+```bash
+chmod +x scripts/uninstall.sh
+./scripts/uninstall.sh
+```
+
 ## Run
 
 ```bash
@@ -79,10 +103,12 @@ CLI flags override config values.
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp systemd/spotify-ad-muter.service ~/.config/systemd/user/
+sed "s|@PROJECT_ROOT@|$(pwd)|g" systemd/spotify-ad-muter.service > ~/.config/systemd/user/spotify-ad-muter.service
 systemctl --user daemon-reload
 systemctl --user enable --now spotify-ad-muter.service
 ```
+
+Use the installer script if you want this handled automatically.
 
 ## Verify
 
@@ -100,6 +126,11 @@ The current automated baseline is `21` passing unit tests. A detailed test summa
 - `docs/architecture.md`
 - `docs/migration.md`
 - `docs/reference/extension/`
+- `TESTING_REPORT.md`
+
+## CI
+
+GitHub Actions runs the unit test suite and compile checks on pushes and pull requests for Python `3.11` through `3.13`.
 
 ## License
 

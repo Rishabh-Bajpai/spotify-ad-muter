@@ -16,6 +16,8 @@ python3 -m venv .venv
 .venv/bin/python -m compileall src tests
 ```
 
+GitHub Actions runs the same checks on pushes and pull requests.
+
 ## Guidelines
 
 - keep changes focused and small when possible
