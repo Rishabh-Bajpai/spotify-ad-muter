@@ -4,6 +4,12 @@
 
 This repo is vibe-coded using ideas and ad-detection behavior from https://github.com/danigm/spotify-ad-blocker. The original GNOME Shell extension is kept here as archived reference in `docs/reference/extension`.
 
+## Disclaimer
+
+- This project is unofficial and is not affiliated with, endorsed by, or sponsored by Spotify or GNOME.
+- You are responsible for complying with Spotify's Terms of Use and any applicable laws or policies when using this software.
+- This software is provided as-is for educational and personal-use purposes.
+
 ## Why this exists
 
 The original extension depends on GNOME Shell internals and can break across GNOME releases. This version uses stable Linux interfaces instead:
@@ -87,8 +93,14 @@ systemctl --user enable --now spotify-ad-muter.service
 
 Then start Spotify and watch for `Ad detected` and `Restored Spotify stream volume` in the logs.
 
+The current automated baseline is `21` passing unit tests. A detailed test summary lives in `TESTING_REPORT.md`.
+
 ## Docs
 
 - `docs/architecture.md`
 - `docs/migration.md`
 - `docs/reference/extension/`
+
+## License
+
+This project is licensed under the MIT License. See `LICENSE`.
