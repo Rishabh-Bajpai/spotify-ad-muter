@@ -9,5 +9,5 @@ dist/
 .coverage
 .pytest_cache/
 .mypy_cache/
-extension/
 .ruff_cache/
+src/*.egg-info/

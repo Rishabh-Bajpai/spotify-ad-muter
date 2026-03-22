@@ -1,39 +1,53 @@
 # Spotify Ad Muter
 
-This project replaces the GNOME Shell extension in `extension/` with a standalone Python service.
+`spotify-ad-muter` is a standalone Python service that detects Spotify ads over MPRIS and lowers only Spotify's stream volume while the ad is playing.
 
-It uses:
-- Spotify's MPRIS interface on the session D-Bus to detect ads
-- PulseAudio or PipeWire's Pulse compatibility layer to lower Spotify's stream volume
+This repo is vibe-coded using ideas and ad-detection behavior from https://github.com/danigm/spotify-ad-blocker. The original GNOME Shell extension is kept here as archived reference in `docs/reference/extension`.
 
-That makes it independent of GNOME Shell internals, which is useful when the extension breaks on GNOME 46 or later.
+## Why this exists
 
-## What it does
+The original extension depends on GNOME Shell internals and can break across GNOME releases. This version uses stable Linux interfaces instead:
 
-- detects ads from Spotify track IDs that start with `spotify:ad` or `/com/spotify/ad/`
+- session D-Bus MPRIS metadata for ad detection
+- PulseAudio or PipeWire's Pulse compatibility layer for per-app volume control
+
+That makes it a better fit for GNOME 46+ systems.
+
+## Features
+
+- detects ads from track IDs starting with `spotify:ad` or `/com/spotify/ad/`
 - lowers Spotify stream volume during ads
-- restores the previous Spotify stream volume after a short delay
-- keeps checking for new Spotify sink inputs while an ad is active
+- restores each stream to its previous volume after a short delay
+- keeps muting newly created Spotify streams while an ad is active
+- runs cleanly as a foreground CLI app or a systemd user service
+
+## Project layout
+
+```text
+.
+├── src/spotify_ad_muter/
+├── tests/
+├── systemd/
+└── docs/reference/extension/
+```
 
 ## Setup
 
-From the repository root:
-
 ```bash
-python3 -m venv python-muter/.venv
-python-muter/.venv/bin/pip install -e python-muter
+python3 -m venv .venv
+.venv/bin/pip install -e .
 ```
 
-## Run it
+## Run
 
 ```bash
-python-muter/.venv/bin/spotify-ad-muter --log-level INFO
+.venv/bin/spotify-ad-muter --log-level INFO
 ```
 
-Useful flags:
+Example with explicit flags:
 
 ```bash
-python-muter/.venv/bin/spotify-ad-muter \
+.venv/bin/spotify-ad-muter \
   --ad-volume-percent 0 \
   --unmute-delay-ms 500 \
   --poll-interval-ms 1000 \
@@ -41,7 +55,7 @@ python-muter/.venv/bin/spotify-ad-muter \
   --log-level DEBUG
 ```
 
-## Optional config file
+## Config
 
 Create `~/.config/spotify-ad-muter/config.toml`:
 
@@ -53,30 +67,28 @@ log_level = "INFO"
 stream_match_mode = "relaxed"
 ```
 
-CLI flags override config file values.
+CLI flags override config values.
 
 ## systemd user service
 
-1. Copy `python-muter/systemd/spotify-ad-muter.service` to `~/.config/systemd/user/spotify-ad-muter.service`
-2. Replace `<PROJECT_DIR>` with the absolute path to this repository
-3. Enable and start it:
-
 ```bash
+mkdir -p ~/.config/systemd/user
+cp systemd/spotify-ad-muter.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now spotify-ad-muter.service
 ```
 
-## Notes
-
-- The service restores each Spotify stream to its previous volume instead of always forcing 100%.
-- It matches Spotify audio streams by Pulse properties, which works well for PulseAudio and PipeWire setups.
-- If Spotify is not running, the service stays idle and keeps polling.
-
-## Quick verification
+## Verify
 
 ```bash
-python-muter/.venv/bin/python -m unittest discover -s python-muter/tests
-python-muter/.venv/bin/spotify-ad-muter --log-level DEBUG
+.venv/bin/python -m unittest discover -s tests
+.venv/bin/spotify-ad-muter --log-level DEBUG
 ```
 
-Then start Spotify and watch the log output when an ad plays.
+Then start Spotify and watch for `Ad detected` and `Restored Spotify stream volume` in the logs.
+
+## Docs
+
+- `docs/architecture.md`
+- `docs/migration.md`
+- `docs/reference/extension/`
