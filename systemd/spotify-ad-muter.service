@@ -1,0 +1,12 @@
+[Unit]
+Description=Spotify ad muter
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/home/rishabh/github_projects/spotify-ad-blocker/python-muter/.venv/bin/spotify-ad-muter --config %h/.config/spotify-ad-muter/config.toml
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
