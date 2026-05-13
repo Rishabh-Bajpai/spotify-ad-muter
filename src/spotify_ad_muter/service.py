@@ -28,6 +28,8 @@ class AdMuterService:
         self._shutdown = asyncio.Event()
 
     async def run(self) -> None:
+        await self._recover_stuck_streams()
+
         watcher_task = asyncio.create_task(self._watcher.run(), name="mpris-watcher")
         reconcile_task = asyncio.create_task(
             self._reconcile_loop(), name="audio-reconcile"
@@ -49,10 +51,24 @@ class AdMuterService:
                 await reconcile_task
             if self._ad_active or self._audio.has_saved_volumes:
                 await self._restore_now()
+            async with self._audio_lock:
+                await asyncio.to_thread(self._audio.recover_stuck_streams)
             self._audio.close()
 
     async def stop(self) -> None:
         self._shutdown.set()
+
+    async def _recover_stuck_streams(self) -> None:
+        try:
+            recovered = await asyncio.to_thread(self._audio.recover_stuck_streams)
+            if recovered:
+                self._logger.info(
+                    "Recovered %d stuck Spotify stream(s) on startup: %s",
+                    len(recovered),
+                    recovered,
+                )
+        except Exception as error:
+            self._logger.warning("Startup stream recovery failed: %s", error)
 
     async def _handle_state_change(self, is_ad: bool, track_id: str | None) -> None:
         if is_ad:
