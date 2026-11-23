@@ -148,7 +148,8 @@ class SpotifyAudioControllerTests(unittest.TestCase):
         self.assertEqual(pulse.sink_input_mute.call_count, 2)
         pulse.sink_input_mute.assert_any_call(10, True)
         pulse.sink_input_mute.assert_any_call(10, False)
-        pulse.sink_input_volume_set.assert_called_once_with(10, spotify_stream.volume)
+        # Muting never touched volume, so restore must not rewrite it.
+        pulse.sink_input_volume_set.assert_not_called()
         self.assertFalse(controller.has_saved_volumes)
 
     def test_apply_ad_volume_skips_already_muted_streams(self) -> None:
@@ -166,7 +167,9 @@ class SpotifyAudioControllerTests(unittest.TestCase):
         changed = controller.apply_ad_volume(0)
 
         self.assertEqual(changed, [])
-        pulse.sink_input_mute.assert_not_called()
+        # A stream muted while no ad is active is stuck, so it must be healed
+        # rather than left silent.
+        pulse.sink_input_mute.assert_called_once_with(10, False)
 
     def test_restore_volumes_preserves_originally_muted_streams(self) -> None:
         controller = SpotifyAudioController(self.logger)
@@ -183,15 +186,14 @@ class SpotifyAudioControllerTests(unittest.TestCase):
         pulse.sink_input_list.return_value = [spotify_stream]
 
         controller.apply_ad_volume(0)
-        spotify_stream.mute = True
+        pulse.sink_input_mute.reset_mock()
         pulse.sink_input_list.return_value = [spotify_stream]
         pulse.sink_input_info.return_value = spotify_stream
 
         restored = controller.restore_volumes()
 
         self.assertEqual(restored, [10])
-        pulse.sink_input_mute.assert_not_called()
-        pulse.sink_input_volume_set.assert_called_once_with(10, spotify_stream.volume)
+        pulse.sink_input_volume_set.assert_not_called()
         self.assertFalse(controller.has_saved_volumes)
 
     def test_restore_volumes_drops_missing_streams(self) -> None:
@@ -243,7 +245,7 @@ class SpotifyAudioControllerTests(unittest.TestCase):
 
         self.assertEqual(recovered, [10])
         pulse.sink_input_mute.assert_called_once_with(10, False)
-        pulse.sink_input_volume_set.assert_called_once_with(10, stuck.volume)
+        pulse.sink_input_volume_set.assert_not_called()
 
     def test_recover_skips_non_spotify_streams(self) -> None:
         controller = SpotifyAudioController(self.logger)
@@ -261,3 +263,98 @@ class SpotifyAudioControllerTests(unittest.TestCase):
 
         self.assertEqual(recovered, [])
         pulse.sink_input_mute.assert_not_called()
+
+    def test_stuck_stream_is_unmuted_even_when_volume_set_fails(self) -> None:
+        controller = SpotifyAudioController(self.logger)
+        stuck = FakeStream(
+            10,
+            name="Spotify",
+            proplist={"application.name": "Spotify"},
+            mute=True,
+        )
+        pulse = Mock()
+        pulse.sink_input_list.return_value = [stuck]
+        pulse.sink_input_volume_set.side_effect = pulsectl.PulseOperationFailed("aux map")
+        controller._pulse = pulse
+
+        recovered = controller.recover_stuck_streams()
+
+        self.assertEqual(recovered, [10])
+        pulse.sink_input_mute.assert_called_once_with(10, False)
+        pulse.sink_input_volume_set.assert_not_called()
+
+    def test_restore_continues_after_volume_error_on_one_stream(self) -> None:
+        controller = SpotifyAudioController(self.logger)
+        pulse = Mock()
+        controller._pulse = pulse
+        controller._saved_mute_states = {
+            10: StreamMuteSnapshot(index=10, muted=False),
+            11: StreamMuteSnapshot(index=11, muted=False),
+        }
+        pulse.sink_input_info.side_effect = lambda index: FakeStream(index)
+        pulse.sink_input_volume_set.side_effect = pulsectl.PulseOperationFailed("aux map")
+
+        restored = controller.restore_volumes()
+
+        self.assertEqual(restored, [10, 11])
+        pulse.sink_input_mute.assert_any_call(10, False)
+        pulse.sink_input_mute.assert_any_call(11, False)
+        self.assertFalse(controller.has_saved_volumes)
+
+    def test_apply_ad_volume_drops_snapshots_for_vanished_streams(self) -> None:
+        controller = SpotifyAudioController(self.logger)
+        pulse = Mock()
+        controller._pulse = pulse
+        controller._saved_mute_states = {99: StreamMuteSnapshot(index=99, muted=False)}
+        new_stream = FakeStream(
+            10,
+            name="Spotify",
+            proplist={"application.name": "Spotify"},
+            mute=False,
+        )
+        pulse.sink_input_list.return_value = [new_stream]
+
+        controller.apply_ad_volume(0)
+        restored = controller.restore_volumes()
+
+        self.assertEqual(list(controller._saved_mute_states), [])
+        self.assertEqual(restored, [10])
+        pulse.sink_input_mute.assert_any_call(10, False)
+
+    def test_apply_ad_volume_heals_stream_already_muted_by_stale_state(self) -> None:
+        controller = SpotifyAudioController(self.logger)
+        pulse = Mock()
+        controller._pulse = pulse
+        muted = FakeStream(
+            10,
+            name="Spotify",
+            proplist={"application.name": "Spotify"},
+            mute=True,
+        )
+        pulse.sink_input_list.return_value = [muted]
+
+        changed = controller.apply_ad_volume(0)
+
+        self.assertEqual(changed, [])
+        pulse.sink_input_mute.assert_called_once_with(10, False)
+        self.assertTrue(controller.has_saved_volumes)
+
+    def test_release_all_unmutes_tracked_and_live_streams(self) -> None:
+        controller = SpotifyAudioController(self.logger)
+        pulse = Mock()
+        controller._pulse = pulse
+        controller._saved_mute_states = {42: StreamMuteSnapshot(index=42, muted=False)}
+        live = FakeStream(
+            10,
+            name="Spotify",
+            proplist={"application.name": "Spotify"},
+            mute=True,
+        )
+        pulse.sink_input_list.return_value = [live]
+
+        released = controller.release_all()
+
+        self.assertEqual(sorted(released), [10, 42])
+        pulse.sink_input_mute.assert_any_call(10, False)
+        pulse.sink_input_mute.assert_any_call(42, False)
+        self.assertFalse(controller.has_saved_volumes)

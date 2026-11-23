@@ -32,16 +32,36 @@ class SpotifyAudioController:
     def apply_ad_volume(self, percent: int) -> list[int]:
         pulse = self._pulse_client()
         streams = self._spotify_streams(pulse)
+        live_indexes = {stream.index for stream in streams}
+
+        # Drop snapshots for streams that disappeared (Spotify re-created its
+        # audio stream, app restart, etc.) so a stale index cannot keep us from
+        # tracking the live stream and restoring it later.
+        for stale_index in set(self._saved_mute_states) - live_indexes:
+            self._saved_mute_states.pop(stale_index, None)
 
         changed: list[int] = []
         for stream in streams:
+            if stream.mute and stream.index not in self._saved_mute_states:
+                # Muted but not by us, so it is stuck (likely from a previous
+                # run that died before unmuting). Remember it as "should be
+                # unmuted" and clear it now so the user is not left silent.
+                self._saved_mute_states[stream.index] = StreamMuteSnapshot(
+                    index=stream.index,
+                    muted=False,
+                )
+                try:
+                    self._set_mute(pulse, stream.index, False)
+                except pulsectl.PulseOperationFailed:
+                    pass
+                continue
             if stream.index not in self._saved_mute_states:
                 self._saved_mute_states[stream.index] = StreamMuteSnapshot(
                     index=stream.index,
-                    muted=bool(stream.mute),
+                    muted=False,
                 )
             if not stream.mute:
-                pulse.sink_input_mute(stream.index, True)
+                self._set_mute(pulse, stream.index, True)
                 changed.append(stream.index)
         return changed
 
@@ -54,11 +74,16 @@ class SpotifyAudioController:
             except (pulsectl.PulseIndexError, pulsectl.PulseOperationFailed):
                 self._saved_mute_states.pop(index, None)
                 continue
-            if not snapshot.muted:
-                pulse.sink_input_mute(index, False)
-            pulse.sink_input_volume_set(index, stream_info.volume)
-            restored.append(index)
-            self._saved_mute_states.pop(index, None)
+            try:
+                if not snapshot.muted:
+                    self._set_mute(pulse, index, False)
+                # Volume was never changed while muting, so there is nothing to
+                # restore. Setting it anyway fails on streams with a channel
+                # map pulsectl cannot parse (e.g. aux0,aux1) and aborted the
+                # whole restore loop, leaving earlier streams muted.
+                restored.append(index)
+            finally:
+                self._saved_mute_states.pop(index, None)
         return restored
 
     def recover_stuck_streams(self) -> list[int]:
@@ -66,12 +91,29 @@ class SpotifyAudioController:
         recovered: list[int] = []
         for stream in self._spotify_streams(pulse):
             if stream.mute:
-                pulse.sink_input_mute(stream.index, False)
-                pulse.sink_input_volume_set(stream.index, stream.volume)
+                # Unmute first: the user must never be left silent because a
+                # follow-up call failed.
+                self._set_mute(pulse, stream.index, False)
                 recovered.append(stream.index)
         if recovered:
             self._logger.info("Recovered %d stuck stream(s): %s", len(recovered), recovered)
         return recovered
+
+    def release_all(self) -> list[int]:
+        """Unmute every stream this controller muted, ignoring saved state."""
+        pulse = self._pulse_client()
+        released: list[int] = []
+        for index in set(self._saved_mute_states) | set(self.current_stream_indexes()):
+            try:
+                self._set_mute(pulse, index, False)
+                released.append(index)
+            except (pulsectl.PulseIndexError, pulsectl.PulseOperationFailed):
+                continue
+        self._saved_mute_states.clear()
+        return released
+
+    def _set_mute(self, pulse: pulsectl.Pulse, index: int, muted: bool) -> None:
+        pulse.sink_input_mute(index, muted)
 
     def current_stream_indexes(self) -> list[int]:
         return [stream.index for stream in self._spotify_streams(self._pulse_client())]

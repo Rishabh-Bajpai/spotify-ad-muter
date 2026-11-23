@@ -61,10 +61,17 @@ async def _run_service(config: AppConfig) -> None:
     service = AdMuterService(config)
     loop = asyncio.get_running_loop()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(service.stop()))
+    def _request_stop() -> None:
+        asyncio.create_task(service.stop())
 
-    await service.run()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _request_stop)
+
+    try:
+        await service.run()
+    finally:
+        # Never leave Spotify muted because the service exited abnormally.
+        await service.force_unmute()
 
 
 def main() -> int:

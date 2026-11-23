@@ -52,11 +52,21 @@ class AdMuterService:
             if self._ad_active or self._audio.has_saved_volumes:
                 await self._restore_now()
             async with self._audio_lock:
-                await asyncio.to_thread(self._audio.recover_stuck_streams)
+                await asyncio.to_thread(self._audio.release_all)
             self._audio.close()
 
     async def stop(self) -> None:
         self._shutdown.set()
+
+    async def force_unmute(self) -> None:
+        """Best-effort unmute of any Spotify stream we may have muted."""
+        try:
+            async with self._audio_lock:
+                await asyncio.to_thread(self._audio.release_all)
+        except Exception as error:
+            self._logger.warning("Failed to release Spotify stream mute: %s", error)
+        finally:
+            self._audio.close()
 
     async def _recover_stuck_streams(self) -> None:
         try:
@@ -93,6 +103,12 @@ class AdMuterService:
             await asyncio.sleep(interval)
             if self._ad_active:
                 await self._apply_ad_volume()
+            elif not self._ad_active and not self._audio.has_saved_volumes:
+                # Safety net: no ad is playing and we are not holding a muted
+                # stream, so any muted Spotify stream is stuck (a previous run
+                # died mid-ad, or a restore failed). Clear it so the user is
+                # never left with silent playback.
+                await self._recover_stuck_streams()
 
     async def _apply_ad_volume(self) -> None:
         try:
